@@ -1,7 +1,6 @@
 #include <iostream>
 #include<openssl/rsa.h>
 #include <openssl/pem.h>
-#include <crypt.h>
 #include <fstream>
 #include <string.h>
 #include <sys/socket.h>
@@ -17,6 +16,7 @@ void getPassword(int passwordSize, int saltSize) {
     int option;
     ofstream config;
     string password, salt;
+    unsigned char *out = static_cast<unsigned char *>(malloc(sizeof(char) * 100));
     cout << "1-Own password 2-Generated Password(default)" << endl;
     cin >> option;
     if (option == 1) {
@@ -36,7 +36,9 @@ void getPassword(int passwordSize, int saltSize) {
         salt += (char) (rand() % 105 + 21);
     }
     config.open("config");
-    config << crypt(password.c_str(), ("$6$" + salt).c_str()) << endl << salt;
+    PKCS5_PBKDF2_HMAC(password.c_str(), password.length(), reinterpret_cast<const unsigned char *>(salt.c_str()),
+                      salt.length(), 1000, EVP_sha512(), 100, out);
+    config << out << endl << salt;
     config.close();
 }
 
@@ -96,6 +98,17 @@ void generateKey(int size) {
     BN_free(bn);
 }
 
+bool verify(const unsigned char *a, string b, unsigned long sizeA, unsigned long sizeB) {
+    if (sizeA != sizeB) {
+        return false;
+    }
+    for (int i = 0; i < sizeA; i++) {
+        if (a[i] != ((unsigned char) b[i])) {
+            return false;
+        }
+    }
+    return true;
+}
 int main(int argc, char *argv[]) {
     int option, size, bufferSize = 17000;
     string nienawidzePisacWc = "1";
@@ -111,11 +124,15 @@ int main(int argc, char *argv[]) {
         ifstream config("config");
 
         if (config.is_open()) {
+            unsigned char *out = static_cast<unsigned char *>(malloc(sizeof(char) * 100));
             getline(config, password);
             getline(config, salt);
             cout << "Enter password" << endl;
             cin >> password2;
-            if (crypt(password2.c_str(), ("$6$" + salt).c_str()) == password) {
+            PKCS5_PBKDF2_HMAC(password2.c_str(), password2.length(),
+                              reinterpret_cast<const unsigned char *>(salt.c_str()), salt.length(), 1000, EVP_sha512(),
+                              100, out);
+            if (verify(out, password, strlen((char *) out), password.length())) {
                 string privateK, Nstring;
                 ifstream privateKey;
                 BIGNUM *N = BN_new();
